@@ -66,6 +66,6 @@ experiments:
     # -------------------------------------------------------------------------
     architecture_comparison:
       description: CONCAT vs INTERACT vs ATTN on manually selected representations
-      representations: []
+      representations: [PCMKRD, MGRD, PCMGRD, MGMK]
       architectures: [CONCAT, INTERACT, ATTN]
       overrides: {}
