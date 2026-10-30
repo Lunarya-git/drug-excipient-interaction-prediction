@@ -1,0 +1,131 @@
+# =============================================================================
+# training.yaml - training protocol, hardware, evaluation and model definitions
+# =============================================================================
+
+training:
+  # Training seeds. Every (experiment, seed, fold) is one run. The CV FOLDS are
+  # fixed and shared (see data/splits); seeds only change network initialisation,
+  # shuffling, dropout and the inner early-stopping split.
+  seeds: [42]
+
+  max_epochs: 200
+  batch_size: 128
+  optimizer:
+    name: adamw
+    lr: 0.001
+    weight_decay: 0.0001
+    betas: [0.9, 0.999]
+  grad_clip_norm: null        # e.g. 1.0 to enable gradient clipping
+  scheduler:
+    name: none                # none | plateau
+    factor: 0.5               # plateau only
+    patience: 5               # plateau only (epochs without improvement of monitored value)
+    min_lr: 1.0e-6
+
+  # Class-weighted learning is the primary imbalance method (no oversampling).
+  # Weights are computed from the labels of the CURRENT TRAINING FOLD only.
+  class_weights:
+    mode: balanced            # balanced: w_c = n / (n_classes * n_c) | none
+
+  # Early stopping uses an INNER validation split carved out of the training fold,
+  # so the CV validation fold is never used for stopping / checkpoint selection.
+  early_stopping:
+    inner_val_fraction: 0.10
+    monitor: val_loss         # val_loss (minimise) | val_ap (maximise)
+    patience: 20
+    min_delta: 0.0
+    min_epochs: 10
+
+  checkpoint:
+    save_best: true
+    write_on_improvement: false   # true: write the checkpoint file every time the monitored value improves
+
+  # Log held-out CV-fold loss / AP every epoch for the learning-curve plots.
+  # These numbers are DIAGNOSTIC ONLY and never used for early stopping.
+  log_heldout_curves: true
+
+hardware:
+  # auto: use CUDA if available else CPU (a warning is logged on fallback)
+  # cpu | cuda | cuda:0 ... explicit choice (an explicit CUDA request without CUDA is an error)
+  device: auto
+  # Keep the whole fold on the device and batch by slicing (fast for this data size).
+  data_on_device: true
+  deterministic: true           # deterministic algorithms where possible (warn_only)
+  cudnn_benchmark: false
+  empty_cache_between_folds: true
+  gpu_memory_fraction: null     # e.g. 0.8 -> limit this process to 80% of GPU memory
+  cuda_alloc_conf: null         # e.g. "expandable_segments:True" (sets PYTORCH_CUDA_ALLOC_CONF)
+  cpu_threads: null             # torch.set_num_threads(...) when running on CPU
+
+evaluation:
+  primary_metric: average_precision   # model-selection metric (incompatible = positive class)
+  default_threshold: 0.5
+  # Operating threshold chosen from DEVELOPMENT out-of-fold predictions only
+  # (never from the test set).
+  threshold_selection:
+    metric: f2
+    beta: 2.0
+    grid: {start: 0.01, stop: 0.99, step: 0.01}
+  calibration_bins: 10
+  plots:
+    dpi: 300
+    formats: [png, svg]               # per-fold / per-experiment figures
+    aggregate_formats: [png, svg, pdf] # stage-level comparison figures
+
+# -----------------------------------------------------------------------------
+# Architecture candidates.
+# The KEY (CONCAT, INTERACT, ATTN, or any new name) is the keyword used in
+# experiments.yaml and in experiment IDs (e.g. PC-CONCAT). `type` selects the
+# model class registered in src/models/registry.py. You can add variants by
+# adding a new key with a different `params` block, e.g. INTERACT-WIDE.
+# `training_overrides` optionally overrides entries of `training:` for that
+# architecture only (empty by default so that comparisons stay controlled).
+# -----------------------------------------------------------------------------
+models:
+  CONCAT:
+    type: concat
+    description: >
+      Controlled DE-INTERACT-inspired baseline: concatenated drug and excipient
+      features -> fully connected ReLU network (input dimension adapts to the
+      representation; hidden widths/depth are fixed).
+    params:
+      hidden_dims: [1024, 1024, 1024]
+      dropout: 0.3
+      activation: relu
+    training_overrides: {}
+
+  INTERACT:
+    type: interact
+    description: >
+      Separate drug and excipient encoders followed by explicit interaction
+      fusion [h_d, h_e, h_d * h_e, |h_d - h_e|] and an MLP classifier.
+    params:
+      encoder_hidden_dims: [1024]
+      embedding_dim: 512
+      classifier_hidden_dims: [512]
+      dropout: 0.3
+      activation: relu
+      shared_encoder: false     # false: separate weights for drug and excipient
+    training_overrides: {}
+
+  ATTN:
+    type: attention
+    description: >
+      Lightweight Transformer encoder over compact tokens (never over raw bits):
+      each molecule is split into feature-group tokens (or learned compact
+      tokens), tokens of both molecules plus a CLS token attend jointly.
+    params:
+      token_source: feature_groups   # feature_groups | learned_compact
+      d_model: 64
+      n_heads: 4
+      n_layers: 2
+      ff_mult: 2                     # feed-forward width = ff_mult * d_model
+      dropout: 0.1
+      attn_dropout: 0.1
+      pooling: cls                   # cls | mean
+      classifier_hidden_dims: [128]
+      shared_encoder: false          # false: separate token projections per role
+      # learned_compact mode only:
+      n_tokens: 8
+      compact_hidden_dims: [256]
+    training_overrides: {}

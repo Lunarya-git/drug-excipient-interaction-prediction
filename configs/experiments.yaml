@@ -1,0 +1,71 @@
+# =============================================================================
+# experiments.yaml - stages, candidate lists, experiment names, output paths
+# =============================================================================
+# Each stage reads its OWN candidate lists from this file and iterates over every
+# entry. Nothing is selected or forwarded automatically: after reviewing the
+# results of a stage you edit the next stage's lists by hand.
+#
+# Experiment ID = <representation keyword>-<architecture keyword>
+#   PC-CONCAT     PubChem + concatenation ANN (controlled baseline)
+#   MG-INTERACT   Morgan + explicit interaction fusion
+#   PCMG-ATTN     PubChem + Morgan + attention
+# See docs/experiment_registry.md for every keyword.
+
+experiments:
+  project_name: DE-INTERACT-research
+
+  # All outputs are written below this directory.
+  output_root: outputs
+  subdirs:
+    logs: logs
+    preprocessing: preprocessing
+    experiments: experiments      # per seed / fold result directories
+    checkpoints: checkpoints
+    metrics: metrics              # aggregate metric tables
+    predictions: predictions      # pooled out-of-fold predictions
+    plots: plots                  # aggregate comparison figures
+    reports: reports              # text / markdown reports
+
+  stages:
+    # -------------------------------------------------------------------------
+    # Stage 1 (scripts/03_compare_representations.py)
+    # One fixed architecture, many representations. Use the 15 non-empty
+    # combinations of the four families (PC, MG, MK, RD). Comment out / delete
+    # any entry to skip it, or add your own combination.
+    # -------------------------------------------------------------------------
+    representation_screening:
+      description: Representation screening with the controlled CONCAT baseline
+      architecture: CONCAT
+      representations:
+        # singles
+        - PC
+        - MG
+        - MK
+        - RD
+        # pairs
+        - PCMG
+        - PCMK
+        - PCRD
+        - MGMK
+        - MGRD
+        - MKRD
+        # triples
+        - PCMGMK
+        - PCMGRD
+        - PCMKRD
+        - MGMKRD
+        # all four
+        - PCMGMKRD
+      overrides: {}     # optional overrides of `training:` for this stage only
+
+    # -------------------------------------------------------------------------
+    # Stage 2 (scripts/04_compare_architectures.py)
+    # YOU fill `representations` after reviewing stage-1 results (for example
+    # [PC, PCMG]). It is intentionally empty: nothing is chosen automatically.
+    # `architectures` are keys of `models:` in training.yaml.
+    # -------------------------------------------------------------------------
+    architecture_comparison:
+      description: CONCAT vs INTERACT vs ATTN on manually selected representations
+      representations: []
+      architectures: [CONCAT, INTERACT, ATTN]
+      overrides: {}

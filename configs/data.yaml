@@ -1,0 +1,67 @@
+# =============================================================================
+# data.yaml - dataset location, CSV schema, label mapping, cleaning, splitting
+# =============================================================================
+# All relative paths are resolved against the repository root (the parent of
+# the `configs/` directory).
+
+data:
+  # Raw CSV. This file is never modified by any script.
+  raw_path: data/raw/drug_excipient_data.csv
+
+  # Where script 01 writes cleaned data and where scripts 02-04 read it from.
+  processed_dir: data/processed
+  splits_dir: data/splits
+
+  csv:
+    sep: ","
+    encoding: "utf-8"
+
+  # Map the *logical* column names used by the code to the *actual* header names
+  # in your CSV. Change the right-hand side only if your CSV differs.
+  # `drug_id` / `excipient_id` may be set to null if the CSV has no identifier
+  # columns; the raw row number is then used as identifier in prediction files.
+  columns:
+    drug_id: drug_cid
+    excipient_id: excipient_cid
+    drug_smiles: drug_smiles
+    excipient_smiles: excipient_smiles
+    label: output_value
+
+  # Logical columns that must be non-missing. Rows with a missing/blank value in
+  # any of these are removed (reason: missing_required_value).
+  required_values: [drug_smiles, excipient_smiles, label]
+
+  # ORIGINAL label string  ->  INTERNAL integer.
+  # Internal convention (fixed, never assumed from the CSV):
+  #     1 = INCOMPATIBLE  (positive class)      0 = COMPATIBLE
+  # NOTE: the source CSV spells the positive class "Imcompatible" (sic). That
+  # exact spelling was verified by inspecting the file. Any label value NOT
+  # listed here makes script 01 stop with an error (labels are never guessed).
+  label_mapping:
+    "Imcompatible": 1
+    "Compatible": 0
+  # Matching of source labels: strip whitespace and ignore case.
+  label_match:
+    strip: true
+    case_sensitive: false
+
+  label_names:
+    1: INCOMPATIBLE
+    0: COMPATIBLE
+
+  # How a drug-excipient "pair" is identified for duplicate / conflict handling
+  # and for leakage checks.
+  #   canonical_smiles : (RDKit canonical drug SMILES, RDKit canonical excipient SMILES)
+  #   raw_smiles       : (drug_smiles, excipient_smiles) exactly as in the CSV
+  #   ids              : (drug_id, excipient_id)
+  # Canonicalisation is used ONLY to build the pair key; no other chemical
+  # standardisation (salt stripping, tautomers, charge neutralisation, ...) is done.
+  pair_key: canonical_smiles
+
+splits:
+  # Seed used for BOTH the dev/test split and the CV fold assignment.
+  split_seed: 42
+  # Untouched hold-out test fraction. It is NOT used by any script in this phase.
+  test_fraction: 0.10
+  # Stratified K-fold CV on the development portion.
+  n_folds: 5

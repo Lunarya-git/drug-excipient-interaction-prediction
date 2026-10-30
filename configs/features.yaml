@@ -1,0 +1,110 @@
+# =============================================================================
+# features.yaml - molecular feature families
+# =============================================================================
+# A *feature family* is one molecular representation with a 2-letter keyword.
+# A *representation keyword* used in experiments is one family code or a
+# concatenation of family codes, e.g.  PC  |  PCMG  |  PCMGMK  |  PCMGMKRD.
+# The blocks of a combined representation are concatenated in the order the
+# codes appear in the keyword (PCMG = PubChem block, then Morgan block).
+#
+# Adding a new family that reuses an existing generator `type` needs no source
+# code changes; a brand new generator type needs one function registered in
+# src/features/generators.py.
+
+features:
+  cache_dir: data/features
+  # Parallel jobs for the fingerprint generators (1 = sequential, -1 = all cores).
+  n_jobs: 1
+  # What to do if a descriptor value is NaN/inf:  error | zero_fill
+  nonfinite_policy: error
+  # Number of random molecules re-generated during validation to confirm that
+  # the cache is reproducible (0 disables the consistency re-check).
+  consistency_check_samples: 25
+
+  families:
+    PC:
+      enabled: true
+      type: pubchem_fingerprint
+      name: PubChem (CACTVS) substructure fingerprint
+      description: >
+        881-bit PubChem/CACTVS substructure keys. Generated with
+        scikit-fingerprints (skfp.fingerprints.PubChemFingerprint), a Python
+        implementation based on the official PubChem key definitions and the CDK
+        PubchemFingerprinter (including fixes proposed by Andrew Dalke). It is
+        NOT the PaDEL executable and bit-for-bit identity with PaDEL output is
+        not claimed.
+      n_bits: 881
+      scale: false
+      # Feature groups used as attention tokens by the ATTN architecture.
+      # PubChem sections follow the published 7-section layout of the key set.
+      token_groups:
+        sections:
+          - [0, 115]     # Section 1: hierarchic element counts
+          - [115, 263]   # Section 2: rings in ESSSR ring set
+          - [263, 327]   # Section 3: simple atom pairs
+          - [327, 416]   # Section 4: simple atom nearest neighbours
+          - [416, 460]   # Section 5: detailed atom neighbourhoods
+          - [460, 713]   # Section 6: simple SMARTS patterns
+          - [713, 881]   # Section 7: complex SMARTS patterns
+
+    MG:
+      enabled: true
+      type: morgan
+      name: Morgan / ECFP4 fingerprint
+      description: Morgan circular fingerprint, radius 2 (ECFP4), 2048 bits (RDKit).
+      radius: 2
+      n_bits: 2048
+      use_chirality: false
+      scale: false
+      # Morgan bits are hashed, so equal-size chunks are arbitrary groupings
+      # (they are only a computational device for attention tokens).
+      token_groups:
+        equal_chunks: 8
+
+    MK:
+      enabled: true
+      type: maccs
+      name: MACCS keys
+      description: >
+        RDKit MACCS keys, 167 bits (RDKit returns 167 positions; position 0 is
+        unused by RDKit and is always 0, it is kept so that the dimension is the
+        standard 167).
+      n_bits: 167
+      scale: false
+      token_groups:
+        equal_chunks: 4
+
+    RD:
+      enabled: true
+      type: rdkit_descriptors
+      name: RDKit physicochemical descriptors
+      description: >
+        Small, interpretable set of RDKit physicochemical descriptors (names
+        below). Standardised (z-score) with statistics fitted on training-fold
+        data only, then clipped to +/- clip_value.
+      scale: true
+      clip_value: 10.0
+      # Names resolved through rdkit.Chem.Descriptors; "FormalCharge" is the
+      # net formal charge (rdkit.Chem.GetFormalCharge).
+      descriptors:
+        - MolWt
+        - MolLogP
+        - MolMR
+        - TPSA
+        - LabuteASA
+        - HeavyAtomCount
+        - NumHDonors
+        - NumHAcceptors
+        - NumRotatableBonds
+        - NumHeteroatoms
+        - RingCount
+        - NumAromaticRings
+        - NumAliphaticRings
+        - NumSaturatedRings
+        - FractionCSP3
+        - NumValenceElectrons
+        - NHOHCount
+        - NOCount
+        - FormalCharge
+      token_groups:
+        equal_chunks: 1
